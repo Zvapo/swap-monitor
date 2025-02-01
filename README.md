@@ -1,4 +1,4 @@
-# Base Network DEX Monitor
+# Base Network Swap Monitor
 
 A React application for monitoring swaps on Base Network DEX pools.
 As of now this application allows to:
@@ -27,8 +27,8 @@ All registered swaps are displayed in a UI.
 
 2. Clone the repository:
    ```bash
-   git clone https://github.com/Zvapo/Dex-monitor.git
-   cd Dex-monitor
+   git clone https://github.com/Zvapo/swap-monitor.git
+   cd swap-monitor
    ```
 
 3. Install dependencies:
