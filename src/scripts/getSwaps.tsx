@@ -15,7 +15,7 @@ export class SwapMonitor {
     private factory: ethers.Contract | undefined
     private pool: ethers.Contract | undefined
     private addressZero: string = "0x0000000000000000000000000000000000000000"
-    private onSwapCallback?: (data: any) => void
+    public onSwapCallback?: (data: any) => void
 
     constructor(
         onSwap?: (data: any) => void
@@ -71,23 +71,24 @@ export class SwapMonitor {
             recipient: string, 
             amount0: ethers.BigNumber, 
             amount1: ethers.BigNumber, 
-                sqrtPriceX96: ethers.BigNumber, 
-                liquidity: ethers.BigNumber, 
-                tick: number
-            ) => {
-                console.log('Whoop') // Whoop Whoop :D
-                const swapData = {
-                    sender,
-                    recipient,
-                    amount0: ethers.utils.formatEther(amount0),
-                    amount1: ethers.utils.formatEther(amount1),
-                    sqrtPriceX96: sqrtPriceX96.toString(),
-                    liquidity: liquidity.toString(),
-                    tick: tick.toString()
-                }
-                
-            // Call the callback if it exists
-            this.onSwapCallback?.(swapData)
+            sqrtPriceX96: ethers.BigNumber, 
+            liquidity: ethers.BigNumber, 
+            tick: number
+        ) => {
+            console.log('Whoop') // Whoop Whoop :D
+            const swapData = {
+                sender,
+                recipient,
+                amount0: ethers.utils.formatEther(amount0),
+                amount1: ethers.utils.formatEther(amount1),
+                sqrtPriceX96: sqrtPriceX96.toString(),
+                liquidity: liquidity.toString(),
+                tick: tick.toString()
+            }
+            
+            if (this.onSwapCallback) {
+                this.onSwapCallback(swapData)
+            }
         })
     }
 

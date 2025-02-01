@@ -55,6 +55,12 @@ export default function DexMonitor({ config, onStop }: DexMonitorProps) {
                     const pool = await monitor.getPoolByAddress(config.poolAddress!)
                     addLog(`Found the pool with address ${config.poolAddress}`, 'success')
 
+                    // Set the callback before starting to listen
+                    monitor.onSwapCallback = (swapData) => {
+                        const swapMessage = `Swap: ${swapData.amount0} token0 ↔️ ${swapData.amount1} token1`
+                        addLog(swapMessage, 'swap')
+                    }
+
                     monitor.startListening(pool)
                     setIsListening(true)
                     addLog('Monitoring started', 'success')
@@ -79,6 +85,13 @@ export default function DexMonitor({ config, onStop }: DexMonitorProps) {
                     const pool = await monitor.getPoolByAddress(poolAddress)
                     
                     addLog(`Found a pool with the address ${poolAddress}`, 'success')
+
+                    // Set the callback before starting to listen
+                    monitor.onSwapCallback = (swapData) => {
+                        const swapMessage = `Swap: ${swapData.amount0} token0 ↔️ ${swapData.amount1} token1`
+                        addLog(swapMessage, 'swap')
+                    }
+                    
                     monitor.startListening(pool)
                     setIsListening(true)
                     addLog('Monitoring started', 'success')
