@@ -1,5 +1,3 @@
-import React from 'react'
-
 interface MonitoringModeSelectorProps {
     currentMode: 'token-pair' | 'all-pools' | 'specific-pool'
     onModeChange: (mode: 'token-pair' | 'all-pools' | 'specific-pool') => void

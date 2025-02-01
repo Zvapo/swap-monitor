@@ -31,7 +31,7 @@ export default function DexMonitor({ config, onStop }: DexMonitorProps) {
             type
         }])
     }
-    const monitor = new SwapMonitor()
+
     const stopMonitoring = () => {
         if (swapMonitor) {
             swapMonitor.stopListening()
@@ -44,6 +44,7 @@ export default function DexMonitor({ config, onStop }: DexMonitorProps) {
     useEffect(() => {
         if (!config) return
 
+        const monitor = new SwapMonitor()
         // monitor for a pool
         if (config.type === 'specific-pool' && config.poolAddress) {
             // Initialize monitor for specific pool
@@ -75,7 +76,6 @@ export default function DexMonitor({ config, onStop }: DexMonitorProps) {
 
         // monitor for a token pair
         } else if (config.type === 'token-pair' && config.token0 && config.token1 && config.fee) {
-            // Existing token pair logic
             setSwapMonitor(monitor)
             
             const initializeMonitor = async () => {
@@ -91,7 +91,7 @@ export default function DexMonitor({ config, onStop }: DexMonitorProps) {
                         const swapMessage = `Swap: ${swapData.amount0} token0 ↔️ ${swapData.amount1} token1`
                         addLog(swapMessage, 'swap')
                     }
-                    
+
                     monitor.startListening(pool)
                     setIsListening(true)
                     addLog('Monitoring started', 'success')
@@ -105,7 +105,50 @@ export default function DexMonitor({ config, onStop }: DexMonitorProps) {
         }
 
         else if (config.type === 'all-pools') {
-            // monitor for all pools
+            setSwapMonitor(monitor)
+
+            const initializeMonitor = async () => {
+                addLog('Initializing monitor...', 'info')
+                let poolAddresses: string[] = []
+                try {
+                    poolAddresses = await monitor.getPools()
+                    addLog(`Found ${poolAddresses.length} pools to monitor`, 'info')
+                } catch (error: any) {
+                    addLog(`Error: ${error.message}`, 'error')
+                    console.error('Failed to get pool addresses', error)
+                    return
+                }
+
+                let successCount = 0
+                let failureCount = 0
+
+                // Set the callback before starting to listen
+                monitor.onSwapCallback = (swapData) => {
+                    const swapMessage = `Swap: ${swapData.amount0} token0 ↔️ ${swapData.amount1} token1`
+                    addLog(swapMessage, 'swap')
+                }
+
+                // Add delay function
+                const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+                for (const poolAddress of poolAddresses) {
+                    try {
+                        const pool = await monitor.getPoolByAddress(poolAddress)
+                        monitor.startListening(pool, 1000) // Add a 1 second delay between each pool
+                        successCount++
+                        addLog(`Successfully monitoring pool ${poolAddress}`, 'success')
+                        await delay(1000) // Add a 1 second delay between each pool
+                    } catch (error: any) {
+                        failureCount++
+                        addLog(`Failed to monitor pool ${poolAddress}: ${error.message}`, 'error')
+                        console.error(`Failed to listen to pool address ${poolAddress}:`, error)
+                    }
+                }
+                setIsListening(true)
+                addLog(`Successfully monitoring ${successCount} pools.`, 'info')
+            }
+
+            initializeMonitor()
         }
 
         return () => {
@@ -129,8 +172,8 @@ export default function DexMonitor({ config, onStop }: DexMonitorProps) {
                 {isListening && (
                     <button
                         onClick={stopMonitoring}
-                        className="px-4 py-2 bg-red-600 text-white rounded-lg font-medium
-                                 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500
+                        className="px-4 py-1 bg-red-500 text-white rounded-lg font-medium
+                                 hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500
                                  transition-colors"
                     >
                         Stop Monitoring

@@ -14,7 +14,7 @@ interface TokenPairConfig {
     fee: number
 }
 
-interface AllPoolsConfig {
+interface AllPoolsConfig { // need to add number of pools so i do not get overloaded with logs
     type: 'all-pools'
 }
 
