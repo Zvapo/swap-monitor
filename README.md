@@ -1,8 +1,12 @@
 # Base Network DEX Monitor
 
 A React application for monitoring swaps on Base Network DEX pools.
-As of now, this application allows to pass two token addresses and a fee to monitor a specific pool.
-Registered swaps are displayed in a UI.
+As of now this application allows to:
+- Monitor a swap pool based on two token addresses and a fee.
+- Monitor all swaps in pools added to the last 200 blocks added to the factory.
+- Monitor a swap pool based on its address.
+
+All registered swaps are displayed in a UI.
 
 ## Prerequisites
 
@@ -38,8 +42,7 @@ Registered swaps are displayed in a UI.
    ```
 
 ## Notes:
-- The application as of now does not support monitoring all pools.
-- The application as of now does not support monitoring a pool by its address.
+- Beware of the 429 error when monitoring all pools.
 
 ## License:
 - This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
