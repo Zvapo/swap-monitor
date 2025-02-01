@@ -3,7 +3,8 @@ import { ethers } from 'ethers'
 export class SwapMonitor {
     private FACTORY_ADDRESS: string = '0x33128a8fC17869897dcE68Ed026d694621f6FDfD'
     private FACTORY_ABI: string[] = [
-        "function getPool(address tokenA, address tokenB, uint24 fee) external view returns (address pool)",
+        "event PoolCreated(address token0, address token1, uint24 fee, int24 tickSpacing, address pool)",
+        "function getPool(address tokenA, address tokenB, uint24 fee) external view returns (address pool)"
     ]
     private POOL_ABI: string[] = [
         "event Swap(address indexed sender, address indexed recipient, int256 amount0, int256 amount1, uint160 sqrtPriceX96, uint128 liquidity, int24 tick)",
@@ -12,26 +13,17 @@ export class SwapMonitor {
     ]
     private PUBLIC_NODE_URL: string = '/rpc'
     private provider: ethers.providers.JsonRpcProvider
-    private token0?: string
-    private token1?: string
-    private poolAddress?: string
-    private allPools?: boolean
-    private fee?: number // should only allow to monitor pools with a selected fee
-    private factory: ethers.Contract | undefined
-    private pools: ethers.Contract[] = []
+    private factory: ethers.Contract
+    private pools: ethers.Contract[] | undefined
     private addressZero: string = "0x0000000000000000000000000000000000000000"
-    private onSwapCallback?: (data: any) => void
+    public onSwapCallback?: (data: any) => void
 
     constructor(
-        token0: string,
-        token1: string,
         onSwap?: (data: any) => void
     ) {
-        this.token0 = token0
-        this.token1 = token1
         this.onSwapCallback = onSwap
         this.provider = this.initProvider()
-        this.factory = this.initFactory()
+        this.factory = this.initFactory() 
     }
 
     initFactory(){
@@ -40,6 +32,7 @@ export class SwapMonitor {
             return factory
         } catch (error) {
             console.error('Failed to initialize factory', error)
+            throw new Error('Failed to initialize factory')
         }
     }
 
@@ -49,70 +42,137 @@ export class SwapMonitor {
             return new ethers.providers.JsonRpcProvider(this.PUBLIC_NODE_URL)
         } catch (error) {
             console.error('Failed to initialize provider', error)
+            throw new Error('Failed to initialize provider')
+        }
+    }
+
+    async getPools(numberOfBlocks: number = 100) {
+        /*
+            This function will get the pool addresses of the pools created by the factory in the last numberOfBlocks blocks
+            It uses a batch size of 10 blocks per query by default
+            It will then return the pool addresses in an array
+        */
+        try {
+            // Get current block number
+            const batchSize = 10
+            const endBlock = await this.provider.getBlockNumber()
+            const startBlock = Math.max(0, endBlock - numberOfBlocks)
+            console.log(`Querying from block ${startBlock} to ${endBlock} in ${Math.ceil((endBlock - startBlock) / batchSize)} batches`)
+            const filter = this.factory.filters.PoolCreated()
+            
+            let allEvents: any[] = []
+            
+            // Loop through blocks in batches
+            for (let currentBlock = startBlock; currentBlock < endBlock; currentBlock += batchSize) {
+                const batchEndBlock = Math.min(currentBlock + batchSize - 1, endBlock)
+                
+                try {
+                    console.log(`Querying batch from ${currentBlock} to ${batchEndBlock}`)
+                    const batchEvents = await this.factory.queryFilter(
+                        filter,
+                        currentBlock,
+                        batchEndBlock
+                    )
+                    
+                    // Handle events that failed to decode
+                    const processedEvents = batchEvents.map(event => {
+                        if (event.args === null && event.data) {
+                            // Parse the pool address from data field
+                            // Pool address is the last 20 bytes of the data
+                            const poolAddress = '0x' + event.data.slice(-40)
+                            return {
+                                ...event,
+                                args: {
+                                    token0: event.topics[1],
+                                    token1: event.topics[2],
+                                    fee: parseInt(event.topics[3], 16),
+                                    pool: poolAddress
+                                }
+                            }
+                        }
+                        return event
+                    })
+                    
+                    allEvents = [...allEvents, ...processedEvents]
+                    
+                    // Add delay between batches (500ms)
+                    if (currentBlock + batchSize < endBlock) {
+                        await new Promise(resolve => setTimeout(resolve, 500))
+                    }
+                } catch (error) {
+                    console.error(`Failed to fetch events for batch ${currentBlock}-${batchEndBlock}:`, error)
+                    throw error
+                }
+            }
+            console.log('Total events found:', allEvents.length)
+            console.log('All events:', allEvents)
+            return allEvents
+                .map(event => event.args?.pool)
+                .filter(address => address && address !== this.addressZero)
+        } catch (error) {
+            console.error('Failed to get pools:', error)
             throw error
         }
     }
 
-    async getPoolByAddress(poolAddress: string){
+    async getPoolByAddress(poolAddress: string): Promise<ethers.Contract> {
         const pool = new ethers.Contract(poolAddress, this.POOL_ABI, this.provider)
+        this.pools?.push(pool) // add pool to the pools array
         return pool
     }
 
-    async tryGetPoolAddress(fees: number[]): Promise<{poolAddresses: string[], failedFees: number[]}> {
-        const poolAddresses: string[] = []
-        const failedFees: number[] = []
-        for (const fee of fees) {
-            console.log('Trying to get pool address for fee', fee)
-            const poolAddress = await this.factory?.getPool(this.token0, this.token1, fee)
-            if (poolAddress != this.addressZero) {
-                console.log('Pool address found for fee', fee)
-                console.log('Pool address', poolAddress)
-                poolAddresses.push(poolAddress)
-            }
-            else {
-                failedFees.push(fee)
-            }
+    async tryGetPoolAddress(token0: string, token1: string, fee: number): Promise<string> {
+        console.log('Trying to get pool address for fee', fee)
+        if (!this.factory) {
+            throw new Error('Factory not initialized')
         }
 
-        if (poolAddresses.length === 0) {
-            throw new Error('No pool addresses found')
+        const poolAddress = await this.factory.getPool(token0, token1, fee)
+        if (poolAddress === this.addressZero) {
+            throw new Error(`No pool address found for fee ${fee}`)
         }
-
-        return {poolAddresses, failedFees}
+        console.log('Pool address found for fee', fee)
+        console.log('Pool address', poolAddress)
+        return poolAddress
     }
 
-    async getPools(poolAddresses: string[]){
-        for (const poolAddress of poolAddresses) {
-            const pool = new ethers.Contract(poolAddress, this.POOL_ABI, this.provider)
-            this.pools.push(pool)
-        }
+    startListening(pool: ethers.Contract, delayMs?: number){
+        pool.on('Swap', async (
+            sender: string, 
+            recipient: string, 
+            amount0: ethers.BigNumber, 
+            amount1: ethers.BigNumber, 
+            sqrtPriceX96: ethers.BigNumber, 
+            liquidity: ethers.BigNumber, 
+            tick: number
+        ) => {
+            // Add optional delay if specified
+            if (delayMs) {
+                await new Promise(resolve => setTimeout(resolve, delayMs));
+            }
+
+            console.log('Whoop') // Whoop Whoop :D
+            const swapData = {
+                sender,
+                recipient,
+                amount0: ethers.utils.formatEther(amount0),
+                amount1: ethers.utils.formatEther(amount1),
+                sqrtPriceX96: sqrtPriceX96.toString(),
+                liquidity: liquidity.toString(),
+                tick: tick.toString()
+            }
+            
+            if (this.onSwapCallback) {
+                this.onSwapCallback(swapData)
+            }
+        })
     }
 
-    startListening(){
-        for (const pool of this.pools) {
-            pool.on('Swap', (
-                sender: string, 
-                recipient: string, 
-                amount0: ethers.BigNumber, 
-                amount1: ethers.BigNumber, 
-                sqrtPriceX96: ethers.BigNumber, 
-                liquidity: ethers.BigNumber, 
-                tick: number
-            ) => {
-                console.log('Whoop')
-                const swapData = {
-                    sender,
-                    recipient,
-                    amount0: ethers.utils.formatEther(amount0),
-                    amount1: ethers.utils.formatEther(amount1),
-                    sqrtPriceX96: sqrtPriceX96.toString(),
-                    liquidity: liquidity.toString(),
-                    tick: tick.toString()
-                }
-                
-                // Call the callback if it exists
-                this.onSwapCallback?.(swapData)
-            })
+    stopListening(){
+        if (this.pools) {
+            for (const pool of this.pools) {
+                pool.removeAllListeners('Swap')
+            }
         }
     }
 
@@ -131,11 +191,5 @@ export class SwapMonitor {
     //         return 'shrimp'
     //     }
     // }
-
-    stopListening(){
-        for (const pool of this.pools) {
-            pool.removeAllListeners('Swap')
-        }
-    }
 }
 
