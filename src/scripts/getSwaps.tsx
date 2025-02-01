@@ -12,26 +12,16 @@ export class SwapMonitor {
     ]
     private PUBLIC_NODE_URL: string = '/rpc'
     private provider: ethers.providers.JsonRpcProvider
-    private token0?: string
-    private token1?: string
-    private poolAddress?: string
-    private allPools?: boolean
-    private fee?: number // should only allow to monitor pools with a selected fee
     private factory: ethers.Contract | undefined
-    private pools: ethers.Contract[] = []
     private addressZero: string = "0x0000000000000000000000000000000000000000"
     private onSwapCallback?: (data: any) => void
 
     constructor(
-        token0: string,
-        token1: string,
         onSwap?: (data: any) => void
     ) {
-        this.token0 = token0
-        this.token1 = token1
         this.onSwapCallback = onSwap
         this.provider = this.initProvider()
-        this.factory = this.initFactory()
+        this.factory = this.initFactory() 
     }
 
     initFactory(){
@@ -53,53 +43,37 @@ export class SwapMonitor {
         }
     }
 
-    async getPoolByAddress(poolAddress: string){
+    async getPoolByAddress(poolAddress: string): Promise<ethers.Contract> {
         const pool = new ethers.Contract(poolAddress, this.POOL_ABI, this.provider)
         return pool
     }
 
-    async tryGetPoolAddress(fees: number[]): Promise<{poolAddresses: string[], failedFees: number[]}> {
-        const poolAddresses: string[] = []
-        const failedFees: number[] = []
-        for (const fee of fees) {
-            console.log('Trying to get pool address for fee', fee)
-            const poolAddress = await this.factory?.getPool(this.token0, this.token1, fee)
-            if (poolAddress != this.addressZero) {
-                console.log('Pool address found for fee', fee)
-                console.log('Pool address', poolAddress)
-                poolAddresses.push(poolAddress)
-            }
-            else {
-                failedFees.push(fee)
-            }
+    async tryGetPoolAddress(token0: string, token1: string, fee: number): Promise<string> {
+        console.log('Trying to get pool address for fee', fee)
+        if (!this.factory) {
+            throw new Error('Factory not initialized')
         }
 
-        if (poolAddresses.length === 0) {
-            throw new Error('No pool addresses found')
+        const poolAddress = await this.factory.getPool(token0, token1, fee)
+        if (poolAddress === this.addressZero) {
+            throw new Error(`No pool address found for fee ${fee}`)
         }
-
-        return {poolAddresses, failedFees}
+        console.log('Pool address found for fee', fee)
+        console.log('Pool address', poolAddress)
+        return poolAddress
     }
 
-    async getPools(poolAddresses: string[]){
-        for (const poolAddress of poolAddresses) {
-            const pool = new ethers.Contract(poolAddress, this.POOL_ABI, this.provider)
-            this.pools.push(pool)
-        }
-    }
-
-    startListening(){
-        for (const pool of this.pools) {
-            pool.on('Swap', (
-                sender: string, 
-                recipient: string, 
-                amount0: ethers.BigNumber, 
-                amount1: ethers.BigNumber, 
+    startListening(pool: ethers.Contract){
+        pool.on('Swap', (
+            sender: string, 
+            recipient: string, 
+            amount0: ethers.BigNumber, 
+            amount1: ethers.BigNumber, 
                 sqrtPriceX96: ethers.BigNumber, 
                 liquidity: ethers.BigNumber, 
                 tick: number
             ) => {
-                console.log('Whoop')
+                console.log('Whoop') // Whoop Whoop :D
                 const swapData = {
                     sender,
                     recipient,
@@ -110,10 +84,9 @@ export class SwapMonitor {
                     tick: tick.toString()
                 }
                 
-                // Call the callback if it exists
-                this.onSwapCallback?.(swapData)
-            })
-        }
+            // Call the callback if it exists
+            this.onSwapCallback?.(swapData)
+        })
     }
 
     // getMarkerCap(){
@@ -132,10 +105,8 @@ export class SwapMonitor {
     //     }
     // }
 
-    stopListening(){
-        for (const pool of this.pools) {
-            pool.removeAllListeners('Swap')
-        }
+    stopListening(pool: ethers.Contract){
+        pool.removeAllListeners('Swap')
     }
 }
 
