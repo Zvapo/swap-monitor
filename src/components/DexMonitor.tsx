@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { SwapMonitor } from '../scripts/getSwaps'
+import { ethers } from 'ethers'
 
 interface DexMonitorProps {
     config?: {
@@ -8,6 +9,8 @@ interface DexMonitorProps {
         token1?: string
         fee?: number
         poolAddress?: string
+        allPools?: boolean
+        pool?: ethers.Contract
     },
     onStop: () => void
 }
@@ -28,7 +31,7 @@ export default function DexMonitor({ config, onStop }: DexMonitorProps) {
             type
         }])
     }
-
+    const monitor = new SwapMonitor()
     const stopMonitoring = () => {
         if (swapMonitor) {
             swapMonitor.stopListening()
@@ -44,21 +47,15 @@ export default function DexMonitor({ config, onStop }: DexMonitorProps) {
         // monitor for a pool
         if (config.type === 'specific-pool' && config.poolAddress) {
             // Initialize monitor for specific pool
-            const monitor = new SwapMonitor(config.poolAddress)
             setSwapMonitor(monitor)
             
             const initializeMonitor = async () => {
                 try {
                     addLog('Initializing monitor...', 'info')
-                    const {poolAddresses, failedFees} = await monitor.tryGetPoolAddress([config.fee!])
-                    
-                    addLog(`Found ${poolAddresses.length} pools`, 'success')
-                    if (failedFees.length > 0) {
-                        addLog(`Failed to find pools for fees: ${failedFees.join(', ')}`, 'error')
-                    }
+                    const pool = await monitor.getPoolByAddress(config.poolAddress!)
+                    addLog(`Found the pool with address ${config.poolAddress}`, 'success')
 
-                    await monitor.getPools(poolAddresses)
-                    monitor.startListening()
+                    monitor.startListening(pool)
                     setIsListening(true)
                     addLog('Monitoring started', 'success')
                 } catch (error: any) {
@@ -73,33 +70,16 @@ export default function DexMonitor({ config, onStop }: DexMonitorProps) {
         // monitor for a token pair
         } else if (config.type === 'token-pair' && config.token0 && config.token1 && config.fee) {
             // Existing token pair logic
-            const monitor = new SwapMonitor(
-                config.token0!,
-                config.token1!,
-                (swapData) => {
-                    addLog(
-                        `Swap detected:
-                         Amount0: ${swapData.amount0}
-                         Amount1: ${swapData.amount1}
-                         Price: ${swapData.sqrtPriceX96}`,
-                        'swap'
-                    )
-                }
-            )
             setSwapMonitor(monitor)
             
             const initializeMonitor = async () => {
                 try {
                     addLog('Initializing monitor...', 'info')
-                    const {poolAddresses, failedFees} = await monitor.tryGetPoolAddress([config.fee!])
+                    const poolAddress = await monitor.tryGetPoolAddress(config.token0!, config.token1!, config.fee!)
+                    const pool = await monitor.getPoolByAddress(poolAddress)
                     
-                    addLog(`Found ${poolAddresses.length} pools`, 'success')
-                    if (failedFees.length > 0) {
-                        addLog(`Failed to find pools for fees: ${failedFees.join(', ')}`, 'error')
-                    }
-
-                    await monitor.getPools(poolAddresses)
-                    monitor.startListening()
+                    addLog(`Found a pool with the address ${poolAddress}`, 'success')
+                    monitor.startListening(pool)
                     setIsListening(true)
                     addLog('Monitoring started', 'success')
                 } catch (error: any) {

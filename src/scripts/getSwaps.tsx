@@ -13,6 +13,7 @@ export class SwapMonitor {
     private PUBLIC_NODE_URL: string = '/rpc'
     private provider: ethers.providers.JsonRpcProvider
     private factory: ethers.Contract | undefined
+    private pool: ethers.Contract | undefined
     private addressZero: string = "0x0000000000000000000000000000000000000000"
     private onSwapCallback?: (data: any) => void
 
@@ -45,6 +46,7 @@ export class SwapMonitor {
 
     async getPoolByAddress(poolAddress: string): Promise<ethers.Contract> {
         const pool = new ethers.Contract(poolAddress, this.POOL_ABI, this.provider)
+        this.pool = pool
         return pool
     }
 
@@ -105,8 +107,10 @@ export class SwapMonitor {
     //     }
     // }
 
-    stopListening(pool: ethers.Contract){
-        pool.removeAllListeners('Swap')
+    stopListening(){
+        if (this.pool) {
+            this.pool.removeAllListeners('Swap')
+        }
     }
 }
 
