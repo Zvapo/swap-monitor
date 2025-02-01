@@ -37,11 +37,6 @@ Registered swaps are displayed in a UI.
    pnpm run dev
    ```
 
-## Prerequisites
-
-- Node.js (v16 or higher recommended)
-- pnpm package manager
-
 ## Notes:
 - The application as of now does not support monitoring all pools.
 - The application as of now does not support monitoring a pool by its address.
